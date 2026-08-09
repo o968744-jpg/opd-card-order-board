@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>寶可夢 30th 預購單看板</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 20px;
+  background: #f7f8fa; color: #1c1f23;
+  font-family: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  font-size: 14px; line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+}
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 15px; margin: 0 0 12px; color: #444; }
+.sub { color: #6b7280; font-size: 12px; margin-bottom: 18px; }
+.sub a { color: #2563eb; text-decoration: none; margin-right: 14px; white-space: nowrap; }
+.sub a:hover { text-decoration: underline; }
+.card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; }
+.stat .k { font-size: 12px; color: #6b7280; }
+.stat .v { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+.stat .u { font-size: 12px; font-weight: 400; color: #6b7280; margin-left: 3px; }
+.stat.paid .v { color: #15803d; }
+.stat.due .v { color: #b45309; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 8px 10px; border-bottom: 1px solid #eef0f3; text-align: right; }
+th:first-child, td:first-child { text-align: left; }
+th { background: #fafbfc; color: #4b5563; font-weight: 600; white-space: nowrap; cursor: pointer; user-select: none; vertical-align: bottom; }
+th.nosort { cursor: default; }
+th small { display: block; font-weight: 400; color: #9ca3af; font-size: 11px; }
+tbody tr:hover { background: #fafbfc; }
+tbody tr.is-paid { background: #f6fdf8; }
+tbody tr.is-paid:hover { background: #eefaf2; }
+tfoot td { font-weight: 700; border-top: 2px solid #d1d5db; border-bottom: none; background: #fafbfc; }
+input[type=number] { width: 84px; padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 6px; text-align: right; font-size: 13px; font-family: inherit; }
+input[type=search] { width: 220px; max-width: 100%; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 16px; font-family: inherit; }
+input[type=checkbox] { width: 18px; height: 18px; accent-color: #16a34a; cursor: pointer; vertical-align: middle; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.hint { font-size: 12px; color: #6b7280; }
+.chartbox { position: relative; height: 250px; }
+/* 欄位多時只讓表格自己橫捲，整頁不會左右晃 */
+#tableWrap { overflow-x: auto; }
+#tableWrap table { min-width: 780px; }
+.err { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+.empty { color: #6b7280; padding: 24px; text-align: center; }
+.money { font-variant-numeric: tabular-nums; }
+.dim { color: #d1d5db; }
+.src { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
+.src-form { background: #eff6ff; color: #1d4ed8; }
+.src-grp { background: #f0fdf4; color: #15803d; }
+.badge { display: inline-block; background: #fef3c7; color: #92400e; border-radius: 5px; padding: 1px 6px; font-size: 11px; margin-left: 6px; }
+.note { font-size: 12px; color: #6b7280; margin-top: 10px; }
+.warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 8px; padding: 8px 12px; font-size: 12px; margin-top: 10px; }
+button.rl { background: #fff; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+button.rl:hover { background: #f3f4f6; }
+button.rl:disabled { opacity: .5; cursor: default; }
+
+/* A 擴充包整箱進度 */
+.caseprog { margin-top: 14px; }
+.caseprog .bar { position: relative; height: 22px; background: #f3f4f6; border-radius: 6px; overflow: hidden; border: 1px solid #e5e7eb; }
+.caseprog .fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #60a5fa, #3b82f6); transition: width .4s ease; }
+.caseprog .ticks { position: absolute; inset: 0; display: flex; }
+.caseprog .ticks i { flex: 1 1 0; border-right: 1px solid rgba(255,255,255,.75); }
+.caseprog .ticks i:last-child { border-right: 0; }
+.caseprog .lbl { display: flex; justify-content: space-between; font-size: 12px; color: #6b7280; margin-top: 6px; gap: 10px; }
+.caseprog .lbl b { color: #1c1f23; }
+.caseprog.done .fill { background: linear-gradient(90deg, #34d399, #10b981); }
+
+/* ── 手機版：表格轉卡片 ── */
+@media (max-width: 720px) {
+  body { padding: 12px; }
+  .card { padding: 14px; border-radius: 12px; }
+  .stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .stat { padding: 10px 12px; }
+  .stat .v { font-size: 19px; }
+  .chartbox { height: 300px; }
+  .row { margin-bottom: 10px; }
+  input[type=search] { width: 100%; }
+  #tableWrap { overflow-x: visible; }
+  #tableWrap table { min-width: 0; }
+
+  table.resp, table.resp tbody, table.resp tfoot, table.resp tr, table.resp td { display: block; width: 100%; }
+  table.resp thead { display: none; }
+  table.resp tr {
+    border: 1px solid #e5e7eb; border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 10px; background: #fff;
+  }
+  table.resp tbody tr.is-paid { border-color: #bbf7d0; }
+  table.resp td {
+    border: 0; padding: 3px 0; text-align: right;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  }
+  table.resp td::before {
+    content: attr(data-label);
+    color: #6b7280; font-size: 12px; text-align: left; flex: 0 0 auto;
+  }
+  table.resp td.hd {
+    font-size: 16px; font-weight: 700; padding-bottom: 8px; margin-bottom: 6px;
+    border-bottom: 1px solid #f1f3f5;
+  }
+  table.resp td.hd::before { content: none; }
+  table.resp td.zero { display: none; }
+  table.resp tfoot tr { background: #fafbfc; border: 2px solid #d1d5db; }
+  table.resp tfoot td { font-weight: 700; }
+}
+</style>
+</head>
+<body>
+
+<h1>寶可夢 超級進化 30th 商品預購單<span class="badge">戰隊幹部訂單</span></h1>
+<div class="sub">
+  資料來源：Google 表單回覆試算表（開啟自動抓最新，每 2 分鐘更新一次）<br>
+  <a href="https://docs.google.com/forms/d/e/1FAIpQLSdtTb4Z8WMxLn7QMP2slGb19QTD7hdkT9HUoYLIz0Wogrj1-A/viewform" target="_blank" rel="noopener">填寫連結（給訂購者）</a>
+  <a href="https://docs.google.com/spreadsheets/d/1qJNSE6tG7-nV1c4Xhod-8WVOyMS6Z-tPVbyuN6By_6I/edit" target="_blank" rel="noopener">回覆試算表</a>
+</div>
+
+<div id="status" class="card">載入訂單資料中…</div>
+
+<div id="main" style="display:none">
+
+  <div class="stats" id="stats"></div>
+
+  <div class="card">
+    <div class="row">
+      <h2 style="margin:0">品項統計與單價</h2>
+      <span class="hint">單價自動讀表單標題；手動改的話只存在你這台裝置</span>
+    </div>
+    <table class="resp">
+      <thead>
+        <tr>
+          <th class="nosort">品項</th>
+          <th class="nosort">單價（元）</th>
+          <th class="nosort">訂購數量</th>
+          <th class="nosort">下單人數</th>
+          <th class="nosort">小計金額</th>
+        </tr>
+      </thead>
+      <tbody id="cfgBody"></tbody>
+      <tfoot><tr id="cfgFoot"></tr></tfoot>
+    </table>
+
+    <div class="caseprog" id="caseProg"></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <h2 style="margin:0">訂單明細</h2>
+      <input type="search" id="q" placeholder="搜尋姓名…">
+    </div>
+    <div id="paidHint"></div>
+    <div id="tableWrap"></div>
+    <div id="dupWarn"></div>
+  </div>
+
+  <div class="card">
+    <h2>各品項金額佔比</h2>
+    <div class="chartbox"><canvas id="chart"></canvas></div>
+  </div>
+
+  <div class="row" style="justify-content:flex-start">
+    <button class="rl" id="reload">重新整理資料</button>
+    <span class="hint" id="updated"></span>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+<script>
+const SHEET_ID = "1qJNSE6tG7-nV1c4Xhod-8WVOyMS6Z-tPVbyuN6By_6I";
+const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
+const LS_PRICE = "pkm30th_price_v1";
+const LS_PAID  = "pkm30th_paid_v1";
+const BOX_PER_CASE = 12; // A：1箱 = 12盒
+const REFRESH_MS = 120000;
+const NARROW = window.matchMedia("(max-width: 720px)"); // 與 CSS 斷點一致
+
+// 預設值；若試算表標題有寫價格會被覆蓋
+const ITEMS = [
+  { key: "A", short: "A 擴充包",     label: "A. 寶可夢30th擴充包",                 unit: "盒", price: 1980 },
+  { key: "B", short: "B 頂級牌組",   label: "B. 頂級牌組組合 太陽伊布・月亮伊布",   unit: "個", price: 1888 },
+  { key: "C", short: "C 30th禮盒",   label: "C. 超級進化 30th 禮盒",               unit: "個", price: 7490 },
+  { key: "D", short: "D 卡框鑰匙圈", label: "D. 卡框鑰匙圈 最初的夥伴組合",         unit: "個", price: 255  },
+  { key: "E", short: "E 特別卡組",   label: "E. 特別卡組 最初的夥伴",              unit: "個", price: 540  }
+];
+
+let price = {};
+let priceOverride = loadJSON(LS_PRICE);
+let paidLocal = loadJSON(LS_PAID);
+let paidFromSheet = false;   // 試算表是否有「已收款」欄
+let orders = [];
+let sortKey = "amount", sortDir = -1;
+let chart = null;
+
+function loadJSON(k) { try { return JSON.parse(localStorage.getItem(k) || "{}"); } catch (e) { return {}; } }
+function saveJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+/* ---------- CSV ---------- */
+function parseCSV(text) {
+  const rows = []; let row = [], cell = "", inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else inQ = false; }
+      else cell += c;
+    } else if (c === '"') inQ = true;
+    else if (c === ",") { row.push(cell); cell = ""; }
+    else if (c === "\n") { row.push(cell); rows.push(row); row = []; cell = ""; }
+    else if (c !== "\r") cell += c;
+  }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim() !== ""));
+}
+
+function num(v) {
+  if (v === undefined || v === null) return 0;
+  const n = parseFloat(String(v).replace(/[^\d.\-]/g, ""));
+  return isNaN(n) ? 0 : n;
+}
+function fmt(n) { return Math.round(n).toLocaleString("zh-TW"); }
+
+const PAID_YES = /^(是|y|yes|v|✓|✔|true|1|ok|已收|已收款|已付|已付款)$/i;
+
+/* ---------- 解析訂單 ---------- */
+function buildOrders(rows) {
+  const hIdx = rows.findIndex(r => r.some(c => c.includes("姓名")));
+  if (hIdx < 0) throw new Error("找不到「姓名」欄，試算表格式可能改了");
+  const header = rows[hIdx].map(c => c.trim());
+
+  const nameCol = header.findIndex(c => c.includes("姓名"));
+  const timeCol = header.findIndex(c => c.includes("時間"));
+  const srcCol  = header.findIndex(c => c.includes("登記來源"));
+  const paidCol = header.findIndex(c => /收款|已收|付款|已付/.test(c));
+  paidFromSheet = paidCol >= 0;
+
+  const colOf = {};
+  ITEMS.forEach(it => {
+    const c = header.findIndex(h => h.startsWith(it.key + "."));
+    colOf[it.key] = c;
+    // 單價優先讀試算表標題裡的「$1,980/盒」
+    const m = c >= 0 ? header[c].match(/\$?\s*([\d,]+)\s*\/\s*(\S)/) : null;
+    price[it.key] = it.price;
+    if (m) { price[it.key] = num(m[1]); it.unit = m[2]; }
+    if (it.key in priceOverride) price[it.key] = priceOverride[it.key];
+  });
+
+  const out = [];
+  for (let i = hIdx + 1; i < rows.length; i++) {
+    const r = rows[i];
+    const name = (r[nameCol] || "").trim();
+    if (!name) continue;
+    const qty = {}; let units = 0;
+    ITEMS.forEach(it => {
+      const v = colOf[it.key] >= 0 ? num(r[colOf[it.key]]) : 0;
+      qty[it.key] = v; units += v;
+    });
+    const time = timeCol >= 0 ? (r[timeCol] || "").trim() : "";
+    const id = name + "|" + time;
+    out.push({
+      id, name, time,
+      src: srcCol >= 0 ? (r[srcCol] || "").trim() : "",
+      qty, units,
+      paid: paidFromSheet ? PAID_YES.test((r[paidCol] || "").trim()) : !!paidLocal[id]
+    });
+  }
+  return out;
+}
+
+function totals() {
+  const t = {}, people = {};
+  ITEMS.forEach(it => { t[it.key] = 0; people[it.key] = 0; });
+  orders.forEach(o => ITEMS.forEach(it => {
+    t[it.key] += o.qty[it.key];
+    if (o.qty[it.key] > 0) people[it.key]++;
+  }));
+  return { t, people };
+}
+function amountOf(o) { return ITEMS.reduce((s, it) => s + o.qty[it.key] * (price[it.key] || 0), 0); }
+
+/* ---------- 統計卡 ---------- */
+function renderStats() {
+  const { t } = totals();
+  const totalUnits = Object.values(t).reduce((a, b) => a + b, 0);
+  const buyers = orders.filter(o => o.units > 0);
+  const totalAmt = buyers.reduce((s, o) => s + amountOf(o), 0);
+  const paidAmt = buyers.filter(o => o.paid).reduce((s, o) => s + amountOf(o), 0);
+  const paidCnt = buyers.filter(o => o.paid).length;
+  const dueCnt = buyers.length - paidCnt;
+
+  const cells = [
+    ["已登記人數", fmt(orders.length), "人", ""],
+    ["實際有下單", fmt(buyers.length), "人", ""],
+    ["商品總件數", fmt(totalUnits), "件", ""],
+    ["應收總金額", "$" + fmt(totalAmt), "", ""],
+    [`已收款（${paidCnt} 人）`, "$" + fmt(paidAmt), "", "paid"],
+    [`未收款（${dueCnt} 人）`, "$" + fmt(totalAmt - paidAmt), "", "due"]
+  ];
+  document.getElementById("stats").innerHTML = cells.map(([k, v, u, cls]) =>
+    `<div class="stat ${cls}"><div class="k">${k}</div><div class="v money">${v}<span class="u">${u}</span></div></div>`
+  ).join("");
+}
+
+/* ---------- 品項表 + 整箱進度 ---------- */
+function renderCfg() {
+  const { t, people } = totals();
+  let sumU = 0, sumAmt = 0;
+  document.getElementById("cfgBody").innerHTML = ITEMS.map(it => {
+    const u = t[it.key], amt = u * (price[it.key] || 0);
+    sumU += u; sumAmt += amt;
+    return `<tr>
+      <td class="hd">${it.label}</td>
+      <td data-label="單價"><input type="number" min="0" step="1" data-k="${it.key}" value="${price[it.key]}"></td>
+      <td data-label="訂購數量" class="money">${fmt(u)} ${it.unit}</td>
+      <td data-label="下單人數" class="money">${people[it.key]}</td>
+      <td data-label="小計金額" class="money">$${fmt(amt)}</td>
+    </tr>`;
+  }).join("");
+  document.getElementById("cfgFoot").innerHTML =
+    `<td class="hd">合計</td><td data-label=""></td><td data-label="總數量" class="money">${fmt(sumU)}</td>` +
+    `<td data-label=""></td><td data-label="總金額" class="money">$${fmt(sumAmt)}</td>`;
+
+  document.querySelectorAll("#cfgBody input").forEach(inp => {
+    inp.addEventListener("input", () => {
+      price[inp.dataset.k] = num(inp.value);
+      priceOverride[inp.dataset.k] = price[inp.dataset.k];
+      saveJSON(LS_PRICE, priceOverride);
+      renderStats(); renderCfg(); renderTable(); renderChart();
+    });
+  });
+
+  renderCaseProgress(t.A);
+}
+
+function renderCaseProgress(boxes) {
+  const full = Math.floor(boxes / BOX_PER_CASE);
+  const rest = boxes % BOX_PER_CASE;
+  const need = rest === 0 ? 0 : BOX_PER_CASE - rest;
+  const pct = rest === 0 ? (boxes > 0 ? 100 : 0) : (rest / BOX_PER_CASE) * 100;
+  const done = boxes > 0 && rest === 0;
+
+  document.getElementById("caseProg").className = "caseprog" + (done ? " done" : "");
+  document.getElementById("caseProg").innerHTML = `
+    <div class="lbl" style="margin:0 0 6px">
+      <span><b>A 擴充包整箱進度</b>（1 箱 = ${BOX_PER_CASE} 盒）</span>
+      <span>目前 <b>${boxes}</b> 盒</span>
+    </div>
+    <div class="bar">
+      <div class="fill" style="width:${pct}%"></div>
+      <div class="ticks">${Array.from({ length: BOX_PER_CASE }, () => "<i></i>").join("")}</div>
+    </div>
+    <div class="lbl">
+      <span>已滿 <b>${full}</b> 箱${rest ? ` 又 ${rest} 盒` : ""}</span>
+      <span>${done ? "剛好整箱 ✓" : `湊滿下一箱還差 <b>${need}</b> 盒`}</span>
+    </div>`;
+}
+
+/* ---------- 訂單明細 ---------- */
+function renderPaidHint() {
+  document.getElementById("paidHint").innerHTML = paidFromSheet
+    ? `<div class="note">收款狀態讀自試算表的「已收款」欄，所有幹部看到的一樣。要更新請直接改試算表。</div>`
+    : `<div class="warn">收款勾選目前<b>只存在你這台裝置的瀏覽器</b>，其他幹部看不到。想讓大家共用：在回覆試算表右邊新增一欄標題含「已收款」，填 <code>是</code> / <code>V</code> / <code>1</code> 即可，這個看板會自動改抓那一欄。</div>`;
+}
+
+function renderTable() {
+  const q = (document.getElementById("q").value || "").trim();
+  let rows = orders.filter(o => !q || o.name.includes(q));
+  rows.sort((a, b) => {
+    if (sortKey === "name") return a.name.localeCompare(b.name, "zh-Hant") * sortDir;
+    if (sortKey === "amount") return (amountOf(a) - amountOf(b)) * sortDir;
+    if (sortKey === "paid") return ((a.paid ? 1 : 0) - (b.paid ? 1 : 0)) * sortDir;
+    return (a.qty[sortKey] - b.qty[sortKey]) * sortDir;
+  });
+
+  if (!rows.length) {
+    document.getElementById("tableWrap").innerHTML = '<div class="empty">目前沒有符合的訂單。</div>';
+    return;
+  }
+
+  const tot = {}; ITEMS.forEach(it => tot[it.key] = 0);
+  let totAmt = 0;
+  const body = rows.map(o => {
+    ITEMS.forEach(it => tot[it.key] += o.qty[it.key]);
+    const a = amountOf(o); totAmt += a;
+    const src = o.src
+      ? `<span class="src src-grp">${o.src}</span>`
+      : `<span class="src src-form">表單填寫</span>`;
+    const chk = paidFromSheet
+      ? (o.paid ? "✅" : "—")
+      : `<input type="checkbox" data-id="${o.id.replace(/"/g, "&quot;")}"${o.paid ? " checked" : ""}>`;
+    return `<tr class="${o.paid ? "is-paid" : ""}">
+      <td class="hd">${o.name}</td>
+      ${ITEMS.map(it => `<td data-label="${it.short}" class="money${o.qty[it.key] ? "" : " dim zero"}">${o.qty[it.key] || "–"}</td>`).join("")}
+      <td data-label="應付金額" class="money">$${fmt(a)}</td>
+      <td data-label="已收款" style="text-align:center">${chk}</td>
+      <td data-label="來源" style="text-align:left">${src}</td>
+      <td data-label="登記時間" class="hint" style="text-align:left">${o.time}</td>
+    </tr>`;
+  }).join("");
+
+  const th = (k, label, sub) =>
+    `<th data-s="${k}">${label}${sortKey === k ? (sortDir > 0 ? " ▲" : " ▼") : ""}${sub ? `<small>${sub}</small>` : ""}</th>`;
+
+  document.getElementById("tableWrap").innerHTML = `<table class="resp">
+    <thead><tr>
+      ${th("name", "姓名")}
+      ${ITEMS.map(it => th(it.key, it.short, "$" + fmt(price[it.key]))).join("")}
+      ${th("amount", "應付金額")}
+      ${th("paid", "已收款")}
+      <th class="nosort" style="text-align:left">來源</th>
+      <th class="nosort" style="text-align:left">登記時間</th>
+    </tr></thead>
+    <tbody>${body}</tbody>
+    <tfoot><tr>
+      <td class="hd">合計（${rows.length} 人）</td>
+      ${ITEMS.map(it => `<td data-label="${it.short}" class="money">${fmt(tot[it.key])}</td>`).join("")}
+      <td data-label="應付金額" class="money">$${fmt(totAmt)}</td>
+      <td data-label=""></td><td data-label=""></td><td data-label=""></td>
+    </tr></tfoot>
+  </table>`;
+
+  document.querySelectorAll("th[data-s]").forEach(h => {
+    h.addEventListener("click", () => {
+      const k = h.dataset.s;
+      if (sortKey === k) sortDir = -sortDir; else { sortKey = k; sortDir = k === "name" ? 1 : -1; }
+      renderTable();
+    });
+  });
+
+  document.querySelectorAll('#tableWrap input[type=checkbox]').forEach(cb => {
+    cb.addEventListener("change", () => {
+      const id = cb.dataset.id;
+      const o = orders.find(x => x.id === id);
+      if (o) o.paid = cb.checked;
+      if (cb.checked) paidLocal[id] = 1; else delete paidLocal[id];
+      saveJSON(LS_PAID, paidLocal);
+      // 只換這一列的樣式，不重繪整張表（避免手機上捲動位置跳掉）
+      cb.closest("tr").classList.toggle("is-paid", cb.checked);
+      renderStats();
+    });
+  });
+}
+
+/* ---------- 重複姓名提醒 ---------- */
+function renderDupWarn() {
+  const seen = {};
+  orders.forEach(o => { const k = o.name.replace(/\s|\d/g, ""); (seen[k] = seen[k] || []).push(o.name); });
+  const dups = Object.values(seen).filter(v => v.length > 1);
+  document.getElementById("dupWarn").innerHTML = dups.length
+    ? `<div class="warn">⚠️ 有 ${dups.length} 組看起來重複的登記，請確認是不是同一人重複填：` +
+      dups.map(v => `<b>${[...new Set(v)].join(" / ")}</b>`).join("、") + `</div>`
+    : "";
+}
+
+/* ---------- 圖表 ---------- */
+function renderChart() {
+  const { t } = totals();
+  const data = ITEMS.map(i => t[i.key] * (price[i.key] || 0));
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById("chart"), {
+    type: "doughnut",
+    data: {
+      labels: ITEMS.map(i => i.short),
+      datasets: [{
+        data,
+        backgroundColor: ["#3b82f6", "#f59e0b", "#ef4444", "#a855f7", "#10b981"],
+        borderColor: "#fff", borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: NARROW.matches ? "bottom" : "right", labels: { boxWidth: 12, font: { size: 12 } } },
+        tooltip: { callbacks: { label: c => `${c.label}：$${c.parsed.toLocaleString("zh-TW")}` } }
+      }
+    }
+  });
+}
+
+/* ---------- 載入 ---------- */
+async function load(manual) {
+  const st = document.getElementById("status");
+  const btn = document.getElementById("reload");
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(CSV_URL + "&_=" + Date.now(), { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status + "（試算表可能沒開放「知道連結的人可檢視」）");
+    orders = buildOrders(parseCSV(await res.text()));
+
+    st.style.display = "none";
+    document.getElementById("main").style.display = "";
+    renderStats(); renderCfg(); renderPaidHint(); renderTable(); renderDupWarn(); renderChart();
+    document.getElementById("updated").textContent =
+      "最後更新：" + new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
+  } catch (e) {
+    if (!orders.length) {
+      st.style.display = "";
+      st.className = "card err";
+      st.textContent = "無法讀取回覆試算表：" + (e.message || e);
+    } else {
+      document.getElementById("updated").textContent = "更新失敗，顯示的是舊資料";
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+document.getElementById("q").addEventListener("input", renderTable);
+document.getElementById("reload").addEventListener("click", () => load(true));
+NARROW.addEventListener("change", () => { if (orders.length) renderChart(); }); // 轉向時換圖例位置
+setInterval(() => { if (!document.hidden) load(); }, REFRESH_MS);
+load();
+</script>
+</body>
+</html>
