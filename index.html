@@ -165,6 +165,14 @@ button.rl:disabled { opacity: .5; cursor: default; }
     <div class="chartbox"><canvas id="chart"></canvas></div>
   </div>
 
+  <div class="card">
+    <div class="row">
+      <h2 style="margin:0">收款異動紀錄</h2>
+      <span class="hint">最近 20 筆</span>
+    </div>
+    <div id="auditBox"><div class="hint">載入中…</div></div>
+  </div>
+
   <div class="row" style="justify-content:flex-start">
     <button class="rl" id="reload">重新整理資料</button>
     <span class="hint" id="updated"></span>
@@ -183,8 +191,9 @@ const SHEET_ID = "1qJNSE6tG7-nV1c4Xhod-8WVOyMS6Z-tPVbyuN6By_6I";
 const PUB_URL   = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1cvAQPakNrqPXHs2UhVetc7bxluNYFA0kPLwTVlEorVmp21ePnx-XPGGMyIjKdOpyxBZlLtv1k1AF/pub?output=csv";
 const PRICE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRs0ApzQ_odi9AvqIWieoEuf8gVQZEaoJgLBr95fy2SWt8mAmDceW2RXMn2Xet4plQEKEprxaKEjsEZ/pub?output=csv";
 const GVIZ_URL  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
+const PAID_API = "https://opd-paid-k3n8xw2p.o968744.workers.dev";
 const LS_PRICE = "pkm30th_price_v1";
-const LS_PAID  = "pkm30th_paid_v1";
+const LS_ACTOR = "pkm30th_actor_v1";
 let BOX_PER_CASE = 12; // A：1箱 = 12盒（會被「商品單價設定」表覆蓋）
 const REFRESH_MS = 120000;
 const NARROW = window.matchMedia("(max-width: 720px)"); // 與 CSS 斷點一致
@@ -200,7 +209,7 @@ const ITEMS = [
 
 let price = {};
 let priceOverride = loadJSON(LS_PRICE);
-let paidLocal = loadJSON(LS_PAID);
+let paidRemote = {};         // 讀自收款 API：{ order_id: {paid, actor, updated_at} }
 let paidFromSheet = false;   // 試算表是否有「已收款」欄
 let usingGviz = false;       // 是否退回 gviz（會漏掉文字格）
 let sheetPrice = {};         // 讀自「商品單價設定」表
@@ -283,7 +292,7 @@ function buildOrders(rows) {
       id, name, time,
       src: srcCol >= 0 ? (r[srcCol] || "").trim() : "",
       qty, units,
-      paid: paidFromSheet ? PAID_YES.test((r[paidCol] || "").trim()) : !!paidLocal[id]
+      paid: paidFromSheet ? PAID_YES.test((r[paidCol] || "").trim()) : !!paidRemote[id]
     });
   }
   return out;
@@ -378,10 +387,70 @@ function renderCaseProgress(boxes) {
 }
 
 /* ---------- 訂單明細 ---------- */
+function getActor() {
+  let a = "";
+  try { a = localStorage.getItem(LS_ACTOR) || ""; } catch (e) {}
+  if (!a) {
+    a = (prompt("請輸入你的名字（會記在下方的收款異動紀錄裡）：") || "").trim();
+    if (a) { try { localStorage.setItem(LS_ACTOR, a); } catch (e) {} }
+  }
+  return a || "未具名";
+}
+
 function renderPaidHint() {
-  document.getElementById("paidHint").innerHTML = paidFromSheet
-    ? `<div class="note">收款狀態讀自試算表的「已收款」欄，所有幹部看到的一樣。要更新請直接改試算表。</div>`
-    : `<div class="warn">收款勾選目前<b>只存在你這台裝置的瀏覽器</b>，其他幹部看不到。想讓大家共用：在回覆試算表右邊新增一欄標題含「已收款」，填 <code>是</code> / <code>V</code> / <code>1</code> 即可，這個看板會自動改抓那一欄。</div>`;
+  if (paidFromSheet) {
+    document.getElementById("paidHint").innerHTML =
+      `<div class="note">收款狀態讀自試算表的「已收款」欄，所有幹部看到的一樣。要更新請直接改試算表。</div>`;
+    return;
+  }
+  let me = "";
+  try { me = localStorage.getItem(LS_ACTOR) || ""; } catch (e) {}
+  document.getElementById("paidHint").innerHTML =
+    `<div class="note">
+       收款勾選是<b>所有幹部共用</b>的，勾了大家都看得到。這個看板沒有登入機制，
+       <b>任何拿到連結的人都能改</b>，所以每次變更都會記在下方「收款異動紀錄」。<br>
+       目前記名為：<b id="actorName">${me || "（尚未設定）"}</b>
+       <a href="#" id="setActor" style="color:#2563eb">更改名字</a>
+     </div>`;
+  document.getElementById("setActor").addEventListener("click", ev => {
+    ev.preventDefault();
+    const v = (prompt("你的名字：", me) || "").trim();
+    if (v) { try { localStorage.setItem(LS_ACTOR, v); } catch (e) {} renderPaidHint(); }
+  });
+}
+
+async function loadPaid() {
+  try {
+    const r = await fetch(PAID_API + "/api/paid", { cache: "no-store" });
+    if (r.ok) paidRemote = (await r.json()).items || {};
+  } catch (e) { /* 讀不到就先當作都未收款，畫面上會由異動紀錄區塊示警 */ }
+}
+
+async function loadAudit() {
+  const box = document.getElementById("auditBox");
+  try {
+    const r = await fetch(PAID_API + "/api/audit?limit=20", { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const items = (await r.json()).items || [];
+    if (!items.length) { box.innerHTML = `<div class="hint">還沒有任何收款異動。</div>`; return; }
+    box.innerHTML = `<table class="resp"><thead><tr>
+        <th class="nosort" style="text-align:left">時間</th>
+        <th class="nosort" style="text-align:left">訂單</th>
+        <th class="nosort" style="text-align:left">動作</th>
+        <th class="nosort" style="text-align:left">操作者</th>
+      </tr></thead><tbody>` +
+      items.map(it => {
+        const t = new Date(it.at).toLocaleString("zh-TW", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+        return `<tr>
+          <td class="hd" style="text-align:left">${t}</td>
+          <td data-label="訂單" style="text-align:left">${(it.order_id || "").split("|")[0]}</td>
+          <td data-label="動作" style="text-align:left">${it.paid ? "標記已收款" : "取消已收款"}</td>
+          <td data-label="操作者" style="text-align:left">${it.actor || "未具名"}</td>
+        </tr>`;
+      }).join("") + `</tbody></table>`;
+  } catch (e) {
+    box.innerHTML = `<div class="warn">收款服務連不上，勾選可能存不起來：${e.message || e}</div>`;
+  }
 }
 
 function renderTable() {
@@ -450,15 +519,38 @@ function renderTable() {
   });
 
   document.querySelectorAll('#tableWrap input[type=checkbox]').forEach(cb => {
-    cb.addEventListener("change", () => {
+    cb.addEventListener("change", async () => {
       const id = cb.dataset.id;
+      const want = cb.checked;
       const o = orders.find(x => x.id === id);
-      if (o) o.paid = cb.checked;
-      if (cb.checked) paidLocal[id] = 1; else delete paidLocal[id];
-      saveJSON(LS_PAID, paidLocal);
-      // 只換這一列的樣式，不重繪整張表（避免手機上捲動位置跳掉）
-      cb.closest("tr").classList.toggle("is-paid", cb.checked);
+      const tr = cb.closest("tr");
+
+      // 先更新畫面（只動這一列，手機捲動位置不會跳），存失敗再退回
+      cb.disabled = true;
+      tr.classList.toggle("is-paid", want);
+      if (o) o.paid = want;
       renderStats();
+
+      try {
+        const r = await fetch(PAID_API + "/api/paid", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ order_id: id, paid: want, actor: getActor() })
+        });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const d = await r.json();
+        if (want) paidRemote[id] = { paid: 1, actor: d.actor, updated_at: d.updated_at };
+        else delete paidRemote[id];
+        loadAudit();
+      } catch (e) {
+        cb.checked = !want;
+        tr.classList.toggle("is-paid", !want);
+        if (o) o.paid = !want;
+        renderStats();
+        alert("收款狀態沒有存起來，請再按一次。\n" + (e.message || e));
+      } finally {
+        cb.disabled = false;
+      }
     });
   });
 }
@@ -545,13 +637,14 @@ async function load(manual) {
   const btn = document.getElementById("reload");
   if (btn) btn.disabled = true;
   try {
-    const [csv] = await Promise.all([fetchCSV(), loadPriceSheet()]);
+    const [csv] = await Promise.all([fetchCSV(), loadPriceSheet(), loadPaid()]);
     orders = buildOrders(parseCSV(csv));
 
     st.style.display = "none";
     document.getElementById("main").style.display = "";
     renderSourceWarn();
     renderStats(); renderCfg(); renderPaidHint(); renderTable(); renderDupWarn(); renderChart();
+    loadAudit();
     document.getElementById("updated").textContent =
       "最後更新：" + new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
   } catch (e) {
