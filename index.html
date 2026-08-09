@@ -179,11 +179,13 @@ const SHEET_ID = "1qJNSE6tG7-nV1c4Xhod-8WVOyMS6Z-tPVbyuN6By_6I";
 // 1) 發佈到網路的 CSV：輸出「顯示值」，有人填「2盒」「再+2」這類文字也讀得到，正確。
 // 2) gviz CSV：不需發佈，但會把 A～E 欄判定成數值型別，文字格直接吐成空白 → 會少算。
 // 預設走 1，失敗才退回 2 並在畫面上示警。
-const PUB_URL  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/pub?gid=0&single=true&output=csv`;
-const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
+// 注意：要用不帶 gid/single 的 pub?output=csv，加了那兩個參數會回 400。
+const PUB_URL   = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1cvAQPakNrqPXHs2UhVetc7bxluNYFA0kPLwTVlEorVmp21ePnx-XPGGMyIjKdOpyxBZlLtv1k1AF/pub?output=csv";
+const PRICE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRs0ApzQ_odi9AvqIWieoEuf8gVQZEaoJgLBr95fy2SWt8mAmDceW2RXMn2Xet4plQEKEprxaKEjsEZ/pub?output=csv";
+const GVIZ_URL  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
 const LS_PRICE = "pkm30th_price_v1";
 const LS_PAID  = "pkm30th_paid_v1";
-const BOX_PER_CASE = 12; // A：1箱 = 12盒
+let BOX_PER_CASE = 12; // A：1箱 = 12盒（會被「商品單價設定」表覆蓋）
 const REFRESH_MS = 120000;
 const NARROW = window.matchMedia("(max-width: 720px)"); // 與 CSS 斷點一致
 
@@ -201,6 +203,7 @@ let priceOverride = loadJSON(LS_PRICE);
 let paidLocal = loadJSON(LS_PAID);
 let paidFromSheet = false;   // 試算表是否有「已收款」欄
 let usingGviz = false;       // 是否退回 gviz（會漏掉文字格）
+let sheetPrice = {};         // 讀自「商品單價設定」表
 let orders = [];
 let sortKey = "amount", sortDir = -1;
 let chart = null;
@@ -254,6 +257,13 @@ function buildOrders(rows) {
     const m = c >= 0 ? header[c].match(/\$?\s*([\d,]+)\s*\/\s*(\S)/) : null;
     price[it.key] = it.price;
     if (m) { price[it.key] = num(m[1]); it.unit = m[2]; }
+    // 「商品單價設定」表優先於表單標題
+    const sp = sheetPrice[it.key];
+    if (sp) {
+      if (sp.price > 0) price[it.key] = sp.price;
+      if (sp.unit) it.unit = sp.unit;
+      if (sp.name) it.label = sp.name;
+    }
     if (it.key in priceOverride) price[it.key] = priceOverride[it.key];
   });
 
@@ -490,6 +500,23 @@ function renderChart() {
 }
 
 /* ---------- 載入 ---------- */
+// 讀「商品單價設定」表：單價、單位、品名、每箱盒數
+async function loadPriceSheet() {
+  try {
+    const r = await fetch(PRICE_URL + "&_=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) return;
+    parseCSV(await r.text()).forEach(row => {
+      const k = (row[0] || "").trim();
+      if (/^[A-E]$/.test(k)) {
+        sheetPrice[k] = { name: (row[1] || "").trim(), unit: (row[2] || "").trim(), price: num(row[3]) };
+      } else if (/每箱盒數/.test(k)) {
+        const v = num(row[row.length - 1]);
+        if (v > 0) BOX_PER_CASE = v;
+      }
+    });
+  } catch (e) { /* 讀不到就退回用表單標題解析的單價 */ }
+}
+
 async function fetchCSV() {
   const bust = "&_=" + Date.now();
   try {
@@ -518,7 +545,8 @@ async function load(manual) {
   const btn = document.getElementById("reload");
   if (btn) btn.disabled = true;
   try {
-    orders = buildOrders(parseCSV(await fetchCSV()));
+    const [csv] = await Promise.all([fetchCSV(), loadPriceSheet()]);
+    orders = buildOrders(parseCSV(csv));
 
     st.style.display = "none";
     document.getElementById("main").style.display = "";
