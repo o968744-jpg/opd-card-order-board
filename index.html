@@ -124,6 +124,8 @@ button.rl:disabled { opacity: .5; cursor: default; }
 
 <div id="main" style="display:none">
 
+  <div id="srcWarn"></div>
+
   <div class="stats" id="stats"></div>
 
   <div class="card">
@@ -173,7 +175,12 @@ button.rl:disabled { opacity: .5; cursor: default; }
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
 <script>
 const SHEET_ID = "1qJNSE6tG7-nV1c4Xhod-8WVOyMS6Z-tPVbyuN6By_6I";
-const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
+// 兩條資料來源：
+// 1) 發佈到網路的 CSV：輸出「顯示值」，有人填「2盒」「再+2」這類文字也讀得到，正確。
+// 2) gviz CSV：不需發佈，但會把 A～E 欄判定成數值型別，文字格直接吐成空白 → 會少算。
+// 預設走 1，失敗才退回 2 並在畫面上示警。
+const PUB_URL  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/pub?gid=0&single=true&output=csv`;
+const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
 const LS_PRICE = "pkm30th_price_v1";
 const LS_PAID  = "pkm30th_paid_v1";
 const BOX_PER_CASE = 12; // A：1箱 = 12盒
@@ -193,6 +200,7 @@ let price = {};
 let priceOverride = loadJSON(LS_PRICE);
 let paidLocal = loadJSON(LS_PAID);
 let paidFromSheet = false;   // 試算表是否有「已收款」欄
+let usingGviz = false;       // 是否退回 gviz（會漏掉文字格）
 let orders = [];
 let sortKey = "amount", sortDir = -1;
 let chart = null;
@@ -451,7 +459,7 @@ function renderDupWarn() {
   orders.forEach(o => { const k = o.name.replace(/\s|\d/g, ""); (seen[k] = seen[k] || []).push(o.name); });
   const dups = Object.values(seen).filter(v => v.length > 1);
   document.getElementById("dupWarn").innerHTML = dups.length
-    ? `<div class="warn">⚠️ 有 ${dups.length} 組看起來重複的登記，請確認是不是同一人重複填：` +
+    ? `<div class="warn">⚠️ 有 ${dups.length} 組同名登記（金額目前是<b>相加</b>的）。可能是同一人分兩次加購，也可能是重複填寫，請人工確認：` +
       dups.map(v => `<b>${[...new Set(v)].join(" / ")}</b>`).join("、") + `</div>`
     : "";
 }
@@ -482,17 +490,39 @@ function renderChart() {
 }
 
 /* ---------- 載入 ---------- */
+async function fetchCSV() {
+  const bust = "&_=" + Date.now();
+  try {
+    const r = await fetch(PUB_URL + bust, { cache: "no-store" });
+    if (r.ok) { usingGviz = false; return await r.text(); }
+  } catch (e) { /* 未發佈或被擋，往下退回 gviz */ }
+  const r2 = await fetch(GVIZ_URL + bust, { cache: "no-store" });
+  if (!r2.ok) throw new Error("HTTP " + r2.status + "（試算表可能沒開放「知道連結的人可檢視」）");
+  usingGviz = true;
+  return await r2.text();
+}
+
+function renderSourceWarn() {
+  document.getElementById("srcWarn").innerHTML = usingGviz
+    ? `<div class="warn" style="background:#fef2f2;border-color:#fecaca;color:#b91c1c">
+         ⚠️ <b>目前的數字可能少算。</b>試算表還沒「發佈到網路」，這時只能走備援讀法，
+         而備援讀法會把數量欄裡<b>用文字填的格子當成空白</b>（例如有人填「2盒」「再+2」而不是「2」），那幾筆會整個消失。<br>
+         修法：試算表 → 檔案 → 共用 → <b>發佈到網路</b> → 選「逗號分隔值 (.csv)」→ 發佈。
+         發佈後這個看板會自動改讀正確來源，這則警告會自己消失。
+       </div>`
+    : "";
+}
+
 async function load(manual) {
   const st = document.getElementById("status");
   const btn = document.getElementById("reload");
   if (btn) btn.disabled = true;
   try {
-    const res = await fetch(CSV_URL + "&_=" + Date.now(), { cache: "no-store" });
-    if (!res.ok) throw new Error("HTTP " + res.status + "（試算表可能沒開放「知道連結的人可檢視」）");
-    orders = buildOrders(parseCSV(await res.text()));
+    orders = buildOrders(parseCSV(await fetchCSV()));
 
     st.style.display = "none";
     document.getElementById("main").style.display = "";
+    renderSourceWarn();
     renderStats(); renderCfg(); renderPaidHint(); renderTable(); renderDupWarn(); renderChart();
     document.getElementById("updated").textContent =
       "最後更新：" + new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
